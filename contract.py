@@ -1,25 +1,30 @@
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
+
+
 class AgentState(BaseModel):
+    task_domain: str = "Autonomous Incident Response"
 
     raw_input: str
 
-    incident_id: str | None = None
+    incident_id: Optional[str] = None
 
-    incident_type: str | None = None
+    incident_type: Optional[str] = None
 
-    severity: str | None = None
+    severity: Optional[str] = None
 
-    diagnosis: dict = {}
+    analysis_payload: Dict[str, Any] = Field(default_factory=dict)
 
-    tool_calls: list = []
+    tool_calls: List[Dict[str, Any]] = Field(default_factory=list)
 
     validated: bool = False
 
-    report: str = ""
+    report: Optional[str] = None
 
     round_number: int = 0
 
-    error_log: list = []
+    error_log: List[str] = Field(default_factory=list)
 
-    messages: list = []
+    messages: List[str] = Field(default_factory=list)
 
-    telemetry: dict = {}
+    telemetry: Dict[str, Any] = Field(default_factory=dict)
