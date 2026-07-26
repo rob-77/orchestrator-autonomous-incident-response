@@ -22,6 +22,10 @@ from contract import (
     TelemetryLog
 )
 
+from student_4_cascade.snippet import (
+    validate_downstream_state_guardrail,
+)
+
 # Exception raised by Student 3 Rogue Tool Guardrail
 class InvalidToolCallException(Exception):
     """Custom exception raised when a tool call violates security runtime matrix."""
@@ -300,65 +304,85 @@ def worker_b_actor_node(state: AgentState) -> Dict[str, Any]:
 
 def worker_c_validator_node(state: AgentState) -> Dict[str, Any]:
     """
-    Node 3: Worker C - Patch Validator (Student 4 Owner)
-    Executes programmatic invariant assertions on state prior to reporting.
-    Prevents downstream cascade failures through automatic rollback logic.
+    Node 3: Worker C - Patch Validator (Student 4 Owner).
+
+    Runs the isolated Student 4 structural and semantic state guardrail
+    before downstream reporting. Invalid Actor state triggers rejection,
+    a safe mocked rollback, and re-routing for another analysis cycle.
     """
     analysis = state.analysis_payload
-    executed_tools = state.executed_tools
 
-    # STUDENT 4 GUARDRAIL: Invariant assertion checks
-    invariant_errors = []
+    # STUDENT 4 GUARDRAIL:
+    # Validate Worker B output against shared AgentState invariants.
+    validation = validate_downstream_state_guardrail(state)
+    invariant_errors = list(validation.invariant_errors)
 
-    if not executed_tools:
-        invariant_errors.append("Invariant Failure: No tool execution record found in state.")
-    else:
-        last_tool = executed_tools[-1]
-        if last_tool.get("status") != "SUCCESS":
-            invariant_errors.append(f"Invariant Failure: Tool execution status is '{last_tool.get('status')}'.")
-    
-    # Check if cascade failure trigger was set in input prompt
+    # Deterministic integration scenario used to demonstrate that even a
+    # structurally valid patch can fail a downstream service health check.
     if "CASCADE_FAIL" in state.raw_input and state.round_number < 2:
-        invariant_errors.append("Invariant Failure: Downstream service health check failed post-patch (500 Internal Server Error).")
+        invariant_errors.append(
+            "Invariant Failure: Downstream service health check failed "
+            "post-patch (500 Internal Server Error)."
+        )
 
     if invariant_errors:
-        # STUDENT 4 GUARDRAIL: Trigger Rollback Routine
-        val_result = ValidationResult(
+        validation_result = ValidationResult(
             is_valid=False,
             health_check_passed=False,
             invariant_errors=invariant_errors,
-            rollback_required=True
+            rollback_required=True,
         )
 
+        # Strict assignment safety requirement:
+        # this is a record of a MOCK rollback, not a real infrastructure call.
         rollback_record = {
-            "action": "mock_rollback_action",
-            "target": analysis.get("service_id", "system"),
+            "tool": "mock_rollback_action",
             "status": "ROLLBACK_EXECUTED",
-            "message": "SAFE MOCK ROLLBACK: Restored service state to pre-patch snapshot."
+            "executed_params": {
+                "service_id": analysis.get("service_id", "system"),
+            },
+            "safety_level": "SAFE",
+            "output": (
+                "SAFE MOCK ROLLBACK: Restored service state "
+                "to pre-patch snapshot."
+            ),
         }
 
         return {
-            "validation_result": val_result.model_dump(),
+            "validation_result": validation_result.model_dump(),
             "is_validated": False,
             "executed_tools": state.executed_tools + [rollback_record],
-            "error_log": f"Validation failed: {'; '.join(invariant_errors)}. Rollback triggered.",
-            "system_status": "ANALYZING", # Route back for self-healing re-triage
-            "messages": state.messages + [{"role": "validator", "content": f"Validation invariant failed. Triggered automated rollback."}]
+            "error_log": (
+                f"Validation failed: {'; '.join(invariant_errors)}. "
+                "Safe mock rollback triggered."
+            ),
+            "system_status": "ANALYZING",
+            "messages": state.messages
+            + [
+                {
+                    "role": "validator",
+                    "content": (
+                        "Validation invariants failed. "
+                        "Safe mock rollback triggered."
+                    ),
+                }
+            ],
         }
 
-    # Successful validation
-    val_result = ValidationResult(
-        is_valid=True,
-        health_check_passed=True,
-        invariant_errors=[],
-        rollback_required=False
-    )
-
     return {
-        "validation_result": val_result.model_dump(),
+        "validation_result": validation.model_dump(),
         "is_validated": True,
+        "error_log": None,
         "system_status": "SUCCESS",
-        "messages": state.messages + [{"role": "validator", "content": "All invariant health checks PASSED successfully."}]
+        "messages": state.messages
+        + [
+            {
+                "role": "validator",
+                "content": (
+                    "All structural and semantic state invariants passed."
+                ),
+            }
+        ],
     }
 
 

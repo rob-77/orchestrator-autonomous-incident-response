@@ -137,7 +137,7 @@ python student_5_privacy_and_tokens/test_failure.py
 | **Infinite Graph Loops** | Student 1 | $\infty$ rounds ($>\$4.40$ waste) | $5$ rounds max ($0.11$) | **$-97.5\%$ Token Waste** |
 | **Silent Hallucinations** | Student 2 | $100\%$ `KeyError` crashes | $0\%$ crashes ($100\%$ recovery) | **$100\%$ Automatic Recovery** |
 | **Rogue Tool Execution** | Student 3 | $1$ Rogue execution fired | $0$ Rogue actions fired | **$100\%$ Security Intercept** |
-| **Cascade Failure** | Student 4 | $100\%$ Downstream crashes | $0\%$ crashes (Rollback fired) | **Safe State Isolation** |
+| **Cascade Failure** | Student 4 | 9/9 invalid states reached downstream (3 crashes, 6 silent corruptions) | 0/9 reached downstream; 9 safe mock rollbacks | **100% Invalid-State Isolation** |
 | **Data Privacy Leak** | Student 5 | $4$ Secrets leaked to telemetry | $0$ Secrets leaked | **Zero PII Exposure** |
 | **Context Token Bloat** | Student 5 | $1,073$ Tokens ($6.5\text{s}$ latency) | $239$ Tokens ($1.2\text{s}$ latency) | **$-77.7\%$ Token Spend** |
 
