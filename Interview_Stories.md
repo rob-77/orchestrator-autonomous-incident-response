@@ -38,13 +38,10 @@ This guardrail achieved a 100% intercept rate against unauthorized tool attempts
 ---
 
 ### Story 4 (Student 4): Downstream Cascade Failure (Worker C: Validator)
+
 > **Interview Question**: *"How do you prevent bad state data in one microservice or agent from corrupting downstream application layers?"*
 
-“While building our LangGraph Incident Response platform, I owned Worker C, the Patch Validator node tasked with assessing system health before final reporting.
-
-Malformed state data from upstream execution failures was propagating into downstream application code, causing runtime application crashes and data corruption. I engineered a programmatic state validation and sanitization node between execution and reporting layers. This node evaluated incoming state variables against strict structural invariants, verifying tool status codes and metric integrity hashes. When invariant checks failed, the guardrail set a rejection flag, executed an automated mock rollback routine, and prevented corrupted state from reaching downstream code.
-
-My solution eliminated downstream application crashes by 100%, guaranteed total state invariant compliance, and established safe automated rollback capabilities during failed remediation attempts.”
+"During my Master's program, I co-developed an Autonomous Incident Response platform using LangGraph and owned Worker C, the Validator node. Upstream Actor failures could produce incomplete, contradictory, or unauthorized execution records. Without validation, these records reached reporting code, causing KeyError and IndexError crashes or silently reporting incorrect remediation results. I designed a programmatic validation and sanitization guardrail using the team's frozen Pydantic AgentState and ValidationResult contracts. The node checks required fields, execution status, tool-to-recommendation consistency, sanitized authorization, service identity, output integrity, and safety level before downstream routing. When any invariant fails, it rejects the state, records every violation, triggers only a safe mocked rollback, and routes execution back through the Coordinator for recovery. Across ten deterministic scenarios, the guardrail blocked nine of nine invalid states, reduced downstream crashes from three to zero, eliminated six silent corruptions, produced zero false negatives and zero false positives, and achieved 100% overall validation accuracy."
 
 ---
 
