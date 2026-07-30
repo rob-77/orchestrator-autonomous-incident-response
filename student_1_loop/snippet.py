@@ -16,13 +16,15 @@ def coordinator_route_guardrail(state: AgentState, max_allowed_rounds: int = 5) 
     """
     PROGRAMMATIC GUARDRAIL (Student 1):
     Enforces a strict, deterministic round counter check directly in the routing edge logic.
-    If round_number >= max_allowed_rounds, short-circuits execution and forces graceful routing
-    to the final output/reporter node.
+    If round_number >= max_allowed_rounds, short-circuits execution, flags the state with
+    a TIMEOUT_SAFEGUARD status, and forces graceful routing to the final output/reporter node.
     """
     if state.round_number >= max_allowed_rounds:
-        print(f"[GUARDRAIL ACTIVATED] Round limit reached ({state.round_number}/{max_allowed_rounds}). Short-circuiting loop flow.")
+        state.system_status = "TIMEOUT_SAFEGUARD"
+        print(f"[GUARDRAIL ACTIVATED] Round limit reached ({state.round_number}/{max_allowed_rounds}). "
+              f"Short-circuiting loop flow -> system_status set to TIMEOUT_SAFEGUARD.")
         return "reporter"
-    
+
     # Standard routing logic
     if state.system_status == "ANALYZING":
         return "analyzer"
