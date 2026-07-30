@@ -27,13 +27,9 @@ This implementation reduced downstream key error crashes from 100% to 0%, achiev
 ---
 
 ### Story 3 (Student 3): Rogue Tool Execution (Worker B: Actor)
-> **Interview Question**: *"How do you secure autonomous AI agents when granting them access to system tools and APIs?"*
+> **Interview Question**: "How do you stop an LLM-driven agent from executing unauthorized or destructive actions in production?"
 
-“In our Autonomous Incident Response multi-agent system, I designed the tool execution architecture for Worker B, the Patch Actor node.
-
-Adversarial prompts and complex alert inputs risked triggering rogue tool invocations, such as unauthorized database deletions or dangerous parameter injections. To secure execution, I built a dynamic tool runtime execution middleware. Positioned between the LLM decision layer and system tool functions, the middleware intercepted every requested tool call and validated it against a strict permission lookup matrix. If a tool or parameter breached authorization boundaries, the middleware threw an InvalidToolCallException, blocked execution, and logged the security event.
-
-This guardrail achieved a 100% intercept rate against unauthorized tool attempts, completely eliminating destructive infrastructure risks while maintaining full audit logging for compliance.”
+"In our Autonomous Incident Response multi-agent system, I owned Worker B, the Actor, the only node that executed real infrastructure actions, which made it the system's most dangerous failure point. Adversarial prompts or corrupted context could trigger rogue tool calls such as delete_database, or a legal tool carrying an unsafe parameter value. I built a permission-matrix middleware positioned before execution that validates every call against a blacklist, a whitelist, required arguments, and, critically, argument values rather than names alone, so a permitted tool with a dangerous value is still blocked. Any breach raises an InvalidToolCallException and aborts safely. Across a deterministic adversarial batch, rogue executions dropped from 3 to 0, catching three distinct failure types, and I verified the guardrail end-to-end inside the integrated LangGraph system, where a legal restart_service call passed through and executed correctly."
 
 ---
 
