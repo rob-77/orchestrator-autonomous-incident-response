@@ -4,6 +4,27 @@
 
 **Coordinator Node**
 
+## 🏛️ System Architecture & Dynamic Routing Topology
+
+```
+                         ┌─────────────────────────────────────────┐
+                         ▼                                         │ (Loop / Self-Correction)
+               [ 0. Coordinator Node ] ────────────────────────────┼──────────────────┐
+                  │ (Student 1)  ▲                                 │                  │
+                  │ (Route A)    │ (Error Flag)                    │ (Route B)        │ (Route C)
+                  ▼              │                                 ▼                  ▼
+     [ 1. Worker A: Analyzer ] ──┘                      [ 2. Worker B: Actor ]   [ 4. Worker D: Reporter ]
+        (Student 2)                                        (Student 3)                (Final Output)
+                  │                                                │
+                  │ (Valid Schema)                                 │ (Execution State)
+                  ▼                                                ▼
+     [ 5. Worker C: Validator Node ] ◄─────────────────────────────┘
+        (Student 4)
+                  │
+                  └─► [ Global Graph Interceptors: Privacy & Tokens ] (Student 5)
+```
+
+
 Coordinator Node is positioned at the top before Worker A (Analyzer) and Worker D (Reporter); however, it also received loop/self-correction from Worker B (Actor) and error flag from Worder A (Analyzer). Its responsibility is to state routing, round tracking & loop control.
 
 ## Failure Mode Overview
