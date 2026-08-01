@@ -13,38 +13,90 @@ from typing import List, Dict, Any, Tuple
 # PART 1: TELEMETRY DATA PRIVACY REDACTION INTERCEPTOR (SECTION 5)
 # ============================================================================
 
-PII_PATTERNS = [
-    (r'(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.]{12,})["\']?', r'\1: [REDACTED_SECRET]'),
-    (r'bearer\s+[a-zA-Z0-9_\-\.]{12,}', r'Bearer [REDACTED_TOKEN]'),
-    (r'\b\d{3}-\d{2}-\d{4}\b', r'[REDACTED_SSN]'),
-    (r'postgres://[^:]+:[^@]+@', r'postgres://[REDACTED_CREDS]@'),
-    (r'\b(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\b', r'[REDACTED_IP]')
+# Four primary secret classes counted toward the 4 → 0 leak metric.
+# Order matters: redact credentials/tokens before residual host identifiers.
+PRIMARY_PII_PATTERNS: List[Tuple[str, str, str]] = [
+    # 1. Database connection credentials
+    (
+        r"(?i)(postgres|mysql|mongodb)://[^:\s]+:[^@\s]+@",
+        r"\1://[REDACTED_CREDS]@",
+        "db_creds",
+    ),
+    # 2. API keys / labeled secrets ("API Key:", "api_key=", "password:", …)
+    #    Allows whitespace in labels: "API Key" — the prior bug.
+    (
+        r"(?i)(api\s*[_-]?\s*key|secret|password)\s*[:=]\s*[\"']?[A-Za-z0-9_\-.]{12,}[\"']?",
+        r"\1: [REDACTED_SECRET]",
+        "api_key",
+    ),
+    # 3. Social Security Numbers
+    (
+        r"\b\d{3}-\d{2}-\d{4}\b",
+        r"[REDACTED_SSN]",
+        "ssn",
+    ),
+    # 4. Bearer / JWT auth tokens (case-insensitive — the prior bug)
+    (
+        r"(?i)bearer\s+[A-Za-z0-9_\-.=]+",
+        r"Bearer [REDACTED_TOKEN]",
+        "bearer_token",
+    ),
 ]
 
-def redact_telemetry_payload(raw_text: str) -> Tuple[str, int]:
+# Auxiliary scrubbers (still applied; not counted toward the 4-secret metric)
+AUX_PII_PATTERNS: List[Tuple[str, str]] = [
+    (
+        r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
+        r"[REDACTED_IP]",
+    ),
+]
+
+# Canonical leak substrings used by tests to prove residual exposure
+KNOWN_LEAK_MARKERS = [
+    "SuperSecretPassword123",
+    "secret_api_key_9988776655443322",
+    "123-45-6789",
+    "eyJhbGciOiJIUzI1NiIn",
+]
+
+
+def count_remaining_leaks(text: str) -> int:
+    """Return how many of the known secret markers are still present in text."""
+    return sum(1 for marker in KNOWN_LEAK_MARKERS if marker in text)
+
+
+def redact_telemetry_payload(raw_text: str) -> Tuple[str, int, List[str]]:
     """
     PROGRAMMATIC GUARDRAIL (Section 5):
     Intercepts metadata and state payloads prior to streaming to external
     observability platforms (e.g. LangSmith). Scrubs API keys, passwords,
-    DB credentials, IP addresses, and SSNs.
+    DB credentials, bearer tokens, IP addresses, and SSNs.
+
+    Returns:
+        (scrubbed_text, primary_redaction_count, redacted_labels)
+        primary_redaction_count is the 4-class metric (db/api/ssn/bearer).
     """
     redacted_text = raw_text
-    redactions_count = 0
+    redacted_labels: List[str] = []
 
-    for pattern, replacement in PII_PATTERNS:
-        matches = re.findall(pattern, redacted_text)
-        if matches:
-            redactions_count += len(matches)
+    for pattern, replacement, label in PRIMARY_PII_PATTERNS:
+        if re.search(pattern, redacted_text):
             redacted_text = re.sub(pattern, replacement, redacted_text)
+            redacted_labels.append(label)
 
-    return redacted_text, redactions_count
+    for pattern, replacement in AUX_PII_PATTERNS:
+        redacted_text = re.sub(pattern, replacement, redacted_text)
+
+    return redacted_text, len(redacted_labels), redacted_labels
 
 
 # ============================================================================
 # PART 2: CONTEXT WINDOW EXPLOSION & TOKEN PRUNER INTERCEPTOR (SECTION 6)
 # ============================================================================
 
-def prune_context_window(messages: List[Dict[str, Any]], max_token_threshold: int = 300) -> Tuple[List[Dict[str, Any]], int, int]:
+def prune_context_window(
+    messages: List[Dict[str, Any]], max_token_threshold: int = 300
+) -> Tuple[List[Dict[str, Any]], int, int]:
     """
     PROGRAMMATIC GUARDRAIL (Section 6):
     Monitors message list token length before routing turns.
@@ -63,8 +115,11 @@ def prune_context_window(messages: List[Dict[str, Any]], max_token_threshold: in
         first_msg,
         {
             "role": "system",
-            "content": f"[STUDENT 5 GUARDRAIL]: Summarized {len(messages) - 3} intermediate message steps to preserve token budget."
-        }
+            "content": (
+                f"[STUDENT 5 GUARDRAIL]: Summarized {len(messages) - 3} "
+                "intermediate message steps to preserve token budget."
+            ),
+        },
     ] + last_two
 
     after_tokens = sum(len(json.dumps(m)) for m in condensed) // 4

@@ -9,8 +9,6 @@ It incorporates all 5 student code-based guardrails into a single, cohesive stat
 """
 
 import os
-import re
-import json
 from typing import Dict, Any, List, Tuple
 from pydantic import ValidationError
 
@@ -25,6 +23,10 @@ from contract import (
 from student_4_cascade.snippet import (
     validate_downstream_state_guardrail,
 )
+from student_5_privacy_and_tokens.snippet import (
+    redact_telemetry_payload,
+    prune_context_window,
+)
 
 # Exception raised by Student 3 Rogue Tool Guardrail
 class InvalidToolCallException(Exception):
@@ -35,33 +37,16 @@ class InvalidToolCallException(Exception):
 # ============================================================================
 # STUDENT 5 GUARDRAIL COMPONENTS: GLOBAL GRAPH INTERCEPTORS
 # (Telemetry Privacy Redaction & Token Context Window Pruner)
+# Shared implementation lives in student_5_privacy_and_tokens/snippet.py
 # ============================================================================
-
-PII_PATTERNS = [
-    (r'(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.]{16,})["\']?', r'\1: [REDACTED_SECRET]'),
-    (r'bearer\s+[a-zA-Z0-9_\-\.]{16,}', r'Bearer [REDACTED_TOKEN]'),
-    (r'\b\d{3}-\d{2}-\d{4}\b', r'[REDACTED_SSN]'),
-    (r'postgres://[^:]+:[^@]+@', r'postgres://[REDACTED_CREDS]@'),
-    (r'\b(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\.(?:1\d{2}|2[0-4]\d|25[0-5]|\d{1,2})\b', r'[REDACTED_IP]')
-]
 
 def privacy_redaction_interceptor(raw_text: str) -> Tuple[str, bool, List[str]]:
     """
     Student 5 Guardrail Part 1: Programmatically scrubs secrets, API keys, IP addresses,
     and PII from text payloads before emitting telemetry to external dashboards (LangSmith).
     """
-    redacted_text = raw_text
-    redacted_keys = []
-    contains_pii = False
-
-    for pattern, replacement in PII_PATTERNS:
-        matches = re.findall(pattern, redacted_text)
-        if matches:
-            contains_pii = True
-            redacted_keys.append(pattern)
-            redacted_text = re.sub(pattern, replacement, redacted_text)
-
-    return redacted_text, contains_pii, redacted_keys
+    scrubbed_text, redaction_count, redacted_labels = redact_telemetry_payload(raw_text)
+    return scrubbed_text, redaction_count > 0, redacted_labels
 
 
 def context_token_pruner_interceptor(messages: List[Dict[str, Any]], max_token_threshold: int = 400) -> List[Dict[str, Any]]:
@@ -70,24 +55,8 @@ def context_token_pruner_interceptor(messages: List[Dict[str, Any]], max_token_t
     If total estimated token count exceeds max_token_threshold, summarizes past history
     and prunes redundant tool log messages to prevent context window explosion.
     """
-    # Rough token estimation (1 token ~ 4 characters)
-    total_chars = sum(len(json.dumps(m)) for m in messages)
-    estimated_tokens = total_chars // 4
-
-    if estimated_tokens <= max_token_threshold or len(messages) <= 3:
-        return messages
-
-    # Keep initial task prompt (index 0) and latest 2 messages, condense middle turns
-    system_prompt = messages[0]
-    recent_messages = messages[-2:]
-    middle_messages = messages[1:-2]
-
-    condensed_summary = {
-        "role": "system",
-        "content": f"[CONTEXT PRUNED BY STUDENT 5 GUARDRAIL: Condensed {len(middle_messages)} intermediate execution steps to optimize token budget.]"
-    }
-
-    return [system_prompt, condensed_summary] + recent_messages
+    pruned_messages, _, _ = prune_context_window(messages, max_token_threshold=max_token_threshold)
+    return pruned_messages
 
 
 # ============================================================================
