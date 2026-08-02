@@ -221,11 +221,8 @@ All actions interacting with external infrastructure are strictly mocked across 
         └── README.md                # Failure overview, guardrails, and how to run tests
 ```
 
-## Individual Demonstration Video
+## Video Demonstrations
 
-**Combined Individual Failure Mode and Guardrail Demonstrations**
+### Team Technical Demonstration
 
-**Student:** Alex Landon  
-**Demonstration:** Telemetry Privacy and Context Token Guardrails
-
-[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1_fGwRwU7BC3fMDrB8Tho8Dxvw3cqWFG_?usp=drive_link))
+[End-to-End Autonomous Incident Response System] (https://drive.google.com/drive/folders/1t72pFrx8_6noWjc5M2wDup3UbQR8Nire?usp=drive_link)
