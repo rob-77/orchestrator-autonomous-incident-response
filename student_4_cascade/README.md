@@ -150,3 +150,12 @@ Overall validation accuracy: 100.0%
 
 All Student 4 deterministic guardrail assertions passed.
 ```
+
+## Individual Demonstration Video
+
+**Combined Individual Failure Mode and Guardrail Demonstrations**
+
+**Student:** Lujia Wu  
+**Demonstration:** Downstream Cascade Failure Guardrail
+
+[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1F8fPiPSgaTS3WfMDw88K0q8ZPjyWQnut?usp=drive_link)
