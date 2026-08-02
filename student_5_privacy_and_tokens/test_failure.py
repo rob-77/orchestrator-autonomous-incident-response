@@ -114,7 +114,8 @@ def test_context_token_explosion(enable_guardrail: bool) -> dict:
 
     assert before_t > MAX_TOKEN_THRESHOLD
     assert after_t < before_t
-    assert len(pruned_msgs) == 4
+    assert after_t <= 220, f"Expected post-prune <= 220 target, got {after_t}"
+    assert 3 <= len(pruned_msgs) <= 4
     return {
         "messages": len(pruned_msgs),
         "tokens": after_t,

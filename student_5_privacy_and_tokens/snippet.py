@@ -15,6 +15,8 @@ from typing import List, Dict, Any, Tuple
 
 # Assignment: prune when message-window token estimate exceeds this threshold.
 MAX_TOKEN_THRESHOLD = 300
+# Leave headroom so the next coordinator message stays under the hard threshold.
+POST_PRUNE_TARGET = 220
 
 # Illustrative cost model for deterministic metrics (not a live LLM bill).
 COST_PER_TOKEN_USD = 0.00003
@@ -30,14 +32,13 @@ LATENCY_MS_PER_TOKEN = 6.0
 # Four primary secret classes counted toward the 4 → 0 leak metric.
 # Order matters: redact credentials/tokens before residual host identifiers.
 PRIMARY_PII_PATTERNS: List[Tuple[str, str, str]] = [
-    # 1. Database connection credentials
+    # 1. Full database URIs (creds + host + db name). Trailing punctuation preserved.
     (
-        r"(?i)(postgres|mysql|mongodb)://[^:\s]+:[^@\s]+@",
-        r"\1://[REDACTED_CREDS]@",
+        r"(?i)(postgres|mysql|mongodb)://[^\s]+(?<![.,;:])",
+        r"\1://[REDACTED_DATABASE_URI]",
         "db_creds",
     ),
     # 2. API keys / labeled secrets ("API Key:", "api_key=", "password:", …)
-    #    Allows whitespace in labels: "API Key" — previously leaked.
     (
         r"(?i)(api\s*[_-]?\s*key|secret|password)\s*[:=]\s*[\"']?[A-Za-z0-9_\-.]{12,}[\"']?",
         r"\1: [REDACTED_SECRET]",
@@ -49,7 +50,7 @@ PRIMARY_PII_PATTERNS: List[Tuple[str, str, str]] = [
         r"[REDACTED_SSN]",
         "ssn",
     ),
-    # 4. Bearer / JWT auth tokens (case-insensitive — previously leaked)
+    # 4. Bearer / JWT auth tokens (case-insensitive)
     (
         r"(?i)bearer\s+[A-Za-z0-9_\-.=]+",
         r"Bearer [REDACTED_TOKEN]",
@@ -143,12 +144,14 @@ def estimate_latency_seconds(token_count: int) -> float:
 def prune_context_window(
     messages: List[Dict[str, Any]],
     max_token_threshold: int = MAX_TOKEN_THRESHOLD,
+    post_prune_target: int = POST_PRUNE_TARGET,
 ) -> Tuple[List[Dict[str, Any]], int, int]:
     """
     PROGRAMMATIC GUARDRAIL (Section 6):
     Monitors message list token length before routing turns.
     If total tokens exceed max_token_threshold, prunes intermediate execution logs
     and condenses message chain while retaining initial prompt and latest context.
+    Aims for post_prune_target so the next node append stays under the hard threshold.
     """
     before_tokens = estimate_message_tokens(messages)
 
@@ -156,19 +159,33 @@ def prune_context_window(
         return messages, before_tokens, before_tokens
 
     first_msg = messages[0]
-    last_two = messages[-2:]
-    condensed = [
-        first_msg,
-        {
-            "role": "system",
-            "content": (
-                f"[STUDENT 5/6 GUARDRAIL]: Summarized {len(messages) - 3} "
-                "intermediate message steps to preserve token budget."
-            ),
-        },
-    ] + last_two
-
+    dropped = max(0, len(messages) - 3)
+    summary = {
+        "role": "system",
+        "content": (
+            f"[STUDENT 5/6 GUARDRAIL]: Summarized {dropped} "
+            "intermediate message steps to preserve token budget."
+        ),
+    }
+    condensed = [first_msg, summary] + messages[-2:]
     after_tokens = estimate_message_tokens(condensed)
+
+    # Drop one retained recent message if still above the post-prune target.
+    if after_tokens > post_prune_target and len(condensed) > 3:
+        condensed = [first_msg, summary, messages[-1]]
+        after_tokens = estimate_message_tokens(condensed)
+
+    # Truncate oversized leaf content until under target (deterministic).
+    while after_tokens > post_prune_target and isinstance(condensed[-1].get("content"), str):
+        content = condensed[-1]["content"]
+        if len(content) <= 80:
+            break
+        condensed[-1] = {
+            **condensed[-1],
+            "content": content[: max(80, len(content) // 2)] + "…[truncated]",
+        }
+        after_tokens = estimate_message_tokens(condensed)
+
     return condensed, before_tokens, after_tokens
 
 
@@ -186,4 +203,5 @@ def apply_context_guardrail(
         "tokens_after": after_t,
         "pruned": before_t > after_t,
         "threshold": max_token_threshold,
+        "post_prune_target": POST_PRUNE_TARGET,
     }
