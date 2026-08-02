@@ -15,33 +15,6 @@ To address real-world non-deterministic AI risks, our team identified, programma
 
 ---
 
-## 🎬 Video Demonstration Instructions
-
-### 1. Individual 2-Minute Screen Recording Guide (Per Student)
-Each student must record a 2-minute clean screen capture following this structure:
-- **0:00 - 0:30**: Introduce your role, node, and targeted failure mode in the Autonomous Incident Response domain.
-- **0:30 - 1:15**: Execute `python student_X/test_failure.py` with `enable_guardrail=False`. Show the system failing under pressure (e.g. infinite loop, `KeyError` crash, rogue command fired, secret leak, or context bloat).
-- **1:15 - 2:00**: Execute with `enable_guardrail=True`. Show the programmatic guardrail trapping the exception, isolating state, and outputting clean metrics.
-
-### 2. Team 5-Minute Technical Video Demo Guide
-**Preferred recording command** (use case + architecture first, then all three demo segments, with ENTER pauses for narration):
-
-```bash
-python main_system.py --video-all --step
-```
-
-| Time | On screen / command | What to say |
-|---|---|---|
-| **0:00 - 1:00** | Use-case + architecture banner (printed automatically) | Domain stakes, Coordinator + 4 workers, frozen `contract.py`, code-based guardrails |
-| **1:00 - 2:00** | Segment 1/3 — happy path | Clean Monitor → Diagnose → Patch → Validate → Report flow |
-| **2:00 - 3:30** | Segment 2/3 — combined pressure | Schema retry, rogue tool block, privacy scrub, token prune |
-| **3:30 - 4:30** | Segment 3/3 — recovery loop | Cascade rollback loops, then `round_number >= 5` cutover to Reporter |
-| **4:30 - 5:00** | Metrics snapshot footer | Cite before/after numbers from the metrics table below |
-
-Without `--step`, `--video-all` finishes too fast to narrate live — use `--step` (or `--delay 8`) for recording.
-
----
-
 ## 🚀 Quickstart & How to Run
 
 ### Prerequisites
