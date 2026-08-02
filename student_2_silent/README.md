@@ -21,7 +21,7 @@ python student_2_silent/test_failure.py
 
 ## Individual Demonstration Video
 
-**Combined Individual Failure Mode and Guardrail Demonstrations**
+**Multi-Agent Failure Modes & Guardrails**
 
 **Student:** Kashfin MD  
 **Demonstration:** Silent Hallucinations & Structural Failures
