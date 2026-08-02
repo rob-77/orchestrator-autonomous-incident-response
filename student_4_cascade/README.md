@@ -153,7 +153,7 @@ All Student 4 deterministic guardrail assertions passed.
 
 ## Individual Demonstration Video
 
-**Combined Individual Failure Mode and Guardrail Demonstrations**
+**Multi-Agent Failure Modes & Guardrails**
 
 **Student:** Lujia Wu  
 **Demonstration:** Downstream Cascade Failure Guardrail
