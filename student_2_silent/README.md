@@ -18,3 +18,12 @@ Worker A is forced to validate all structured outputs using Pydantic (`IncidentA
 ```bash
 python student_2_silent/test_failure.py
 ```
+
+## Individual Demonstration Video
+
+**Combined Individual Failure Mode and Guardrail Demonstrations**
+
+**Student:** Kashfin MD  
+**Demonstration:** Silent Hallucination and Schema Validation Guardrail
+
+[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1pDXHRON6EWwM3fCeqkKj3q9MmJEkMZja?usp=drive_link)
