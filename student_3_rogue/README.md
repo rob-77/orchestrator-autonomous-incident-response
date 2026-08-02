@@ -54,3 +54,12 @@ Expected final line:
 ```
 METRIC -> Rogue tool executions: 3 -> 0
 ```
+
+## Individual Demonstration Video
+
+**Combined Individual Failure Mode and Guardrail Demonstrations**
+
+**Student:** Francisco Reyes  
+**Demonstration:** Rogue Tool Execution Guardrail
+
+[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1qjEcnB6W4p7rWX9reomlF0xBOOH1oubc?usp=drive_link)
