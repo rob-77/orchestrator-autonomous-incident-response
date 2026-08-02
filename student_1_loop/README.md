@@ -75,7 +75,7 @@ python main_system.py
 
 ## Individual Demonstration Video
 
-**Combined Individual Failure Mode and Guardrail Demonstrations**
+**Multi-Agent Failure Modes & Guardrails**
 
 **Student:** Roberto Gomez  
 **Demonstration:** Infinite Graph Loop Guardrail
