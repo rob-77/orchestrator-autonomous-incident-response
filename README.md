@@ -220,3 +220,12 @@ All actions interacting with external infrastructure are strictly mocked across 
         ├── metrics.md               # Before/after quantitative baselines (4→0 secrets, 1073→240 tokens)
         └── README.md                # Failure overview, guardrails, and how to run tests
 ```
+
+## Individual Demonstration Video
+
+**Combined Individual Failure Mode and Guardrail Demonstrations**
+
+**Student:** Alex Landon  
+**Demonstration:** Telemetry Privacy and Context Token Guardrails
+
+[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1_fGwRwU7BC3fMDrB8Tho8Dxvw3cqWFG_?usp=drive_link))
