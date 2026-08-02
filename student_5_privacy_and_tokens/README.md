@@ -59,3 +59,11 @@ Run the full integrated graph (privacy + token guardrails active):
 python main_system.py
 ```
 
+## Individual Demonstration Video
+
+**Multi-Agent Failure Modes & Guardrails**
+
+**Student:** Alex Landon  
+**Demonstration:** Data Privacy Leak via Telemetry & Context Window Explosion & Token Burn
+
+[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1_fGwRwU7BC3fMDrB8Tho8Dxvw3cqWFG_?usp=drive_link)
