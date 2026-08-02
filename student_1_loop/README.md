@@ -80,4 +80,5 @@ python main_system.py
 **Student:** Roberto Gomez  
 **Demonstration:** Infinite Graph Loop Guardrail
 
-[Watch the Combined Individual Demonstration Video] (https://drive.google.com/drive/folders/1FsxzfFzjbOi8PZ3ev-DDAVsS2ykiWZsp?usp=drive_link)
+[Watch the Combined Individual Demonstration Video] 
+(https://drive.google.com/drive/folders/1FsxzfFzjbOi8PZ3ev-DDAVsS2ykiWZsp?usp=drive_link)
