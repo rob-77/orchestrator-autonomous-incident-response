@@ -24,8 +24,11 @@ from student_4_cascade.snippet import (
     validate_downstream_state_guardrail,
 )
 from student_5_privacy_and_tokens.snippet import (
+    MAX_TOKEN_THRESHOLD,
+    apply_context_guardrail,
+    build_scrubbed_telemetry_span,
+    estimate_message_tokens,
     redact_telemetry_payload,
-    prune_context_window,
 )
 
 # Exception raised by Student 3 Rogue Tool Guardrail
@@ -35,28 +38,40 @@ class InvalidToolCallException(Exception):
 
 
 # ============================================================================
-# STUDENT 5 GUARDRAIL COMPONENTS: GLOBAL GRAPH INTERCEPTORS
-# (Telemetry Privacy Redaction & Token Context Window Pruner)
-# Shared implementation lives in student_5_privacy_and_tokens/snippet.py
+# STUDENT 5/6 GUARDRAIL COMPONENTS: GLOBAL GRAPH INTERCEPTORS
+# Shared implementation: student_5_privacy_and_tokens/snippet.py
 # ============================================================================
 
 def privacy_redaction_interceptor(raw_text: str) -> Tuple[str, bool, List[str]]:
     """
-    Student 5 Guardrail Part 1: Programmatically scrubs secrets, API keys, IP addresses,
-    and PII from text payloads before emitting telemetry to external dashboards (LangSmith).
+    Student 5 Guardrail: Scrub secrets/PII before any LangSmith-bound telemetry export.
     """
     scrubbed_text, redaction_count, redacted_labels = redact_telemetry_payload(raw_text)
     return scrubbed_text, redaction_count > 0, redacted_labels
 
 
-def context_token_pruner_interceptor(messages: List[Dict[str, Any]], max_token_threshold: int = 400) -> List[Dict[str, Any]]:
+def context_token_pruner_interceptor(
+    messages: List[Dict[str, Any]],
+    max_token_threshold: int = MAX_TOKEN_THRESHOLD,
+) -> List[Dict[str, Any]]:
     """
-    Student 5 Guardrail Part 2: Intercepts graph state history right before routing.
-    If total estimated token count exceeds max_token_threshold, summarizes past history
-    and prunes redundant tool log messages to prevent context window explosion.
+    Student 6 Guardrail: Prune message history at loop transitions when over budget.
     """
-    pruned_messages, _, _ = prune_context_window(messages, max_token_threshold=max_token_threshold)
+    pruned_messages, _metrics = apply_context_guardrail(messages, max_token_threshold)
     return pruned_messages
+
+
+def append_scrubbed_telemetry(
+    existing_logs: List[Dict[str, Any]],
+    span_id: str,
+    node_name: str,
+    raw_payload: str,
+) -> List[Dict[str, Any]]:
+    """Every node must route telemetry through the Student 5 redaction interceptor."""
+    span = build_scrubbed_telemetry_span(span_id, node_name, raw_payload)
+    # Keep TelemetryLog contract validation for structural integrity.
+    validated = TelemetryLog(**span)
+    return existing_logs + [validated.model_dump()]
 
 
 # ============================================================================
@@ -103,29 +118,35 @@ def coordinator_node(state: AgentState) -> Dict[str, Any]:
     """
     Node 0: Coordinator Node (Student 1 Owner)
     Evaluates system state and increments round number for deterministic loop prevention.
+    Student 6 context pruner runs at every loop-transition entry into the coordinator.
     """
     current_round = state.round_number + 1
     new_status = state.system_status
-    
-    # Apply Student 5 Context Token Pruner
-    pruned_messages = context_token_pruner_interceptor(state.messages)
 
-    # Telemetry logging with Student 5 Privacy Scrubber
-    telemetry_raw = f"Coordinator round {current_round}. Active status: {state.system_status}. Input: {state.raw_input}"
-    scrubbed_text, contains_pii, redacted_keys = privacy_redaction_interceptor(telemetry_raw)
+    # Student 6: prune bloated message history before routing the next round
+    pruned_messages, prune_metrics = apply_context_guardrail(state.messages)
+    if prune_metrics["pruned"]:
+        print(
+            f"[STUDENT 6 GUARDRAIL]: Context pruned "
+            f"{prune_metrics['tokens_before']} → {prune_metrics['tokens_after']} tokens "
+            f"(threshold={prune_metrics['threshold']})."
+        )
 
-    t_log = TelemetryLog(
-        span_id=f"span_coord_r{current_round}",
-        node_name="Coordinator",
-        raw_payload=scrubbed_text,
-        contains_pii_redaction=contains_pii,
-        redacted_keys=redacted_keys
+    # Student 5: never export raw incident text (may contain PII/secrets)
+    telemetry_raw = (
+        f"Coordinator round {current_round}. Active status: {state.system_status}. "
+        f"Input: {state.raw_input}"
     )
 
     return {
         "round_number": current_round,
         "messages": pruned_messages + [{"role": "coordinator", "content": f"Round {current_round} initiated."}],
-        "telemetry_logs": state.telemetry_logs + [t_log.model_dump()],
+        "telemetry_logs": append_scrubbed_telemetry(
+            state.telemetry_logs,
+            span_id=f"span_coord_r{current_round}",
+            node_name="Coordinator",
+            raw_payload=telemetry_raw,
+        ),
         "system_status": "ANALYZING" if current_round == 1 else new_status
     }
 
@@ -137,9 +158,6 @@ def worker_a_analyzer_node(state: AgentState) -> Dict[str, Any]:
     Includes Student 2 self-healing retry guardrail for schema parsing failures.
     """
     raw_text = state.raw_input
-
-    # Telemetry scrubber
-    scrubbed_log, contains_pii, redacted_keys = privacy_redaction_interceptor(raw_text)
 
     # Simulated LLM parsing with intentional retry simulation if state.error_log is active
     try:
@@ -189,19 +207,16 @@ def worker_a_analyzer_node(state: AgentState) -> Dict[str, Any]:
                 confidence_score=0.92
             )
 
-        t_log = TelemetryLog(
-            span_id=f"span_analyzer_r{state.round_number}",
-            node_name="WorkerA_Analyzer",
-            raw_payload=scrubbed_log,
-            contains_pii_redaction=contains_pii,
-            redacted_keys=redacted_keys
-        )
-
         return {
             "analysis_payload": analysis.model_dump(),
             "error_log": None,
             "system_status": "PATCHING",
-            "telemetry_logs": state.telemetry_logs + [t_log.model_dump()],
+            "telemetry_logs": append_scrubbed_telemetry(
+                state.telemetry_logs,
+                span_id=f"span_analyzer_r{state.round_number}",
+                node_name="WorkerA_Analyzer",
+                raw_payload=raw_text,
+            ),
             "messages": state.messages + [{"role": "analyzer", "content": f"Structured analysis complete for {analysis.service_id}."}]
         }
 
@@ -212,6 +227,12 @@ def worker_a_analyzer_node(state: AgentState) -> Dict[str, Any]:
             "error_log": f"Schema parsing error: {str(exc)}. Retrying with explicit schema rules.",
             "retry_count": new_retry,
             "system_status": "ANALYZING", # Route back to analyzer
+            "telemetry_logs": append_scrubbed_telemetry(
+                state.telemetry_logs,
+                span_id=f"span_analyzer_retry_r{state.round_number}",
+                node_name="WorkerA_Analyzer",
+                raw_payload=raw_text,
+            ),
             "messages": state.messages + [{"role": "analyzer", "content": f"Schema validation failed (Attempt {new_retry}/{state.max_retries}). Triggering self-correction."}]
         }
 
@@ -251,6 +272,12 @@ def worker_b_actor_node(state: AgentState) -> Dict[str, Any]:
             "sanitized_tool_calls": state.sanitized_tool_calls + [tool_name],
             "executed_tools": state.executed_tools + [mock_output],
             "system_status": "VALIDATING",
+            "telemetry_logs": append_scrubbed_telemetry(
+                state.telemetry_logs,
+                span_id=f"span_actor_r{state.round_number}",
+                node_name="WorkerB_Actor",
+                raw_payload=mock_output["output"],
+            ),
             "messages": state.messages + [{"role": "actor", "content": f"Tool '{tool_name}' executed safely under security whitelist."}]
         }
 
@@ -267,6 +294,12 @@ def worker_b_actor_node(state: AgentState) -> Dict[str, Any]:
             "error_log": str(exc),
             "executed_tools": state.executed_tools + [blocked_record],
             "system_status": "FAILED",
+            "telemetry_logs": append_scrubbed_telemetry(
+                state.telemetry_logs,
+                span_id=f"span_actor_blocked_r{state.round_number}",
+                node_name="WorkerB_Actor",
+                raw_payload=blocked_record["output"],
+            ),
             "messages": state.messages + [{"role": "actor", "content": f"ROGUE ACTION BLOCKED: {str(exc)}"}]
         }
 
@@ -326,6 +359,12 @@ def worker_c_validator_node(state: AgentState) -> Dict[str, Any]:
                 "Safe mock rollback triggered."
             ),
             "system_status": "ANALYZING",
+            "telemetry_logs": append_scrubbed_telemetry(
+                state.telemetry_logs,
+                span_id=f"span_validator_rollback_r{state.round_number}",
+                node_name="WorkerC_Validator",
+                raw_payload="; ".join(invariant_errors),
+            ),
             "messages": state.messages
             + [
                 {
@@ -343,6 +382,12 @@ def worker_c_validator_node(state: AgentState) -> Dict[str, Any]:
         "is_validated": True,
         "error_log": None,
         "system_status": "SUCCESS",
+        "telemetry_logs": append_scrubbed_telemetry(
+            state.telemetry_logs,
+            span_id=f"span_validator_r{state.round_number}",
+            node_name="WorkerC_Validator",
+            raw_payload="Validation passed: structural and semantic invariants OK.",
+        ),
         "messages": state.messages
         + [
             {
@@ -382,6 +427,12 @@ def reporter_node(state: AgentState) -> Dict[str, Any]:
 
     return {
         "final_report": report_text,
+        "telemetry_logs": append_scrubbed_telemetry(
+            state.telemetry_logs,
+            span_id=f"span_reporter_r{state.round_number}",
+            node_name="Reporter",
+            raw_payload=report_text,
+        ),
         "messages": state.messages + [{"role": "reporter", "content": "Final incident summary report generated."}]
     }
 
@@ -529,6 +580,17 @@ if __name__ == "__main__":
     print(final_output.get("final_report"))
 
     print("\n--- TELEMETRY PRIVACY CHECK (STUDENT 5) ---")
+    scrubbed_spans = 0
     for log in final_output.get("telemetry_logs", []):
-        print(f"Span: {log['span_id']} | Scrubbed PII: {log['contains_pii_redaction']}")
+        scrubbed = log.get("contains_pii_redaction", False)
+        if scrubbed:
+            scrubbed_spans += 1
+        print(f"Span: {log['span_id']} | Scrubbed PII: {scrubbed} | Keys: {log.get('redacted_keys', [])}")
         print(f"Scrubbed Payload: {log['raw_payload']}\n")
+
+    print("--- CONTEXT / TOKEN CHECK (STUDENT 6) ---")
+    final_msgs = final_output.get("messages", [])
+    final_tokens = estimate_message_tokens(final_msgs)
+    print(f"Final message window: {len(final_msgs)} messages ≈ {final_tokens} tokens")
+    print(f"Privacy spans with redactions: {scrubbed_spans}/{len(final_output.get('telemetry_logs', []))}")
+    print(f"Token threshold (Student 6): {MAX_TOKEN_THRESHOLD}")

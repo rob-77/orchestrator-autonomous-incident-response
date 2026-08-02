@@ -10,6 +10,20 @@ from typing import List, Dict, Any, Tuple
 
 
 # ============================================================================
+# SHARED GUARDRAIL CONSTANTS (used by snippet tests + main_system)
+# ============================================================================
+
+# Assignment: prune when message-window token estimate exceeds this threshold.
+MAX_TOKEN_THRESHOLD = 300
+
+# Illustrative cost model for deterministic metrics (not a live LLM bill).
+COST_PER_TOKEN_USD = 0.00003
+
+# Latency model: ~6 ms per input token as a stand-in for LLM prefill cost.
+LATENCY_MS_PER_TOKEN = 6.0
+
+
+# ============================================================================
 # PART 1: TELEMETRY DATA PRIVACY REDACTION INTERCEPTOR (SECTION 5)
 # ============================================================================
 
@@ -23,7 +37,7 @@ PRIMARY_PII_PATTERNS: List[Tuple[str, str, str]] = [
         "db_creds",
     ),
     # 2. API keys / labeled secrets ("API Key:", "api_key=", "password:", …)
-    #    Allows whitespace in labels: "API Key" — the prior bug.
+    #    Allows whitespace in labels: "API Key" — previously leaked.
     (
         r"(?i)(api\s*[_-]?\s*key|secret|password)\s*[:=]\s*[\"']?[A-Za-z0-9_\-.]{12,}[\"']?",
         r"\1: [REDACTED_SECRET]",
@@ -35,7 +49,7 @@ PRIMARY_PII_PATTERNS: List[Tuple[str, str, str]] = [
         r"[REDACTED_SSN]",
         "ssn",
     ),
-    # 4. Bearer / JWT auth tokens (case-insensitive — the prior bug)
+    # 4. Bearer / JWT auth tokens (case-insensitive — previously leaked)
     (
         r"(?i)bearer\s+[A-Za-z0-9_\-.=]+",
         r"Bearer [REDACTED_TOKEN]",
@@ -90,12 +104,45 @@ def redact_telemetry_payload(raw_text: str) -> Tuple[str, int, List[str]]:
     return redacted_text, len(redacted_labels), redacted_labels
 
 
+def build_scrubbed_telemetry_span(
+    span_id: str,
+    node_name: str,
+    raw_payload: str,
+) -> Dict[str, Any]:
+    """
+    Centralized telemetry interceptor used by every graph node before any
+    external observability export. Always stores the scrubbed payload only.
+    """
+    scrubbed_text, count, labels = redact_telemetry_payload(raw_payload)
+    return {
+        "span_id": span_id,
+        "node_name": node_name,
+        "raw_payload": scrubbed_text,
+        "contains_pii_redaction": count > 0,
+        "redacted_keys": labels,
+    }
+
+
 # ============================================================================
 # PART 2: CONTEXT WINDOW EXPLOSION & TOKEN PRUNER INTERCEPTOR (SECTION 6)
 # ============================================================================
 
+def estimate_message_tokens(messages: List[Dict[str, Any]]) -> int:
+    """Deterministic token estimate: ~1 token per 4 characters of JSON."""
+    return sum(len(json.dumps(m)) for m in messages) // 4
+
+
+def estimate_cost_usd(token_count: int) -> float:
+    return token_count * COST_PER_TOKEN_USD
+
+
+def estimate_latency_seconds(token_count: int) -> float:
+    return (token_count * LATENCY_MS_PER_TOKEN) / 1000.0
+
+
 def prune_context_window(
-    messages: List[Dict[str, Any]], max_token_threshold: int = 300
+    messages: List[Dict[str, Any]],
+    max_token_threshold: int = MAX_TOKEN_THRESHOLD,
 ) -> Tuple[List[Dict[str, Any]], int, int]:
     """
     PROGRAMMATIC GUARDRAIL (Section 6):
@@ -103,12 +150,11 @@ def prune_context_window(
     If total tokens exceed max_token_threshold, prunes intermediate execution logs
     and condenses message chain while retaining initial prompt and latest context.
     """
-    before_tokens = sum(len(json.dumps(m)) for m in messages) // 4
+    before_tokens = estimate_message_tokens(messages)
 
     if before_tokens <= max_token_threshold or len(messages) <= 3:
         return messages, before_tokens, before_tokens
 
-    # Condense history
     first_msg = messages[0]
     last_two = messages[-2:]
     condensed = [
@@ -116,11 +162,28 @@ def prune_context_window(
         {
             "role": "system",
             "content": (
-                f"[STUDENT 5 GUARDRAIL]: Summarized {len(messages) - 3} "
+                f"[STUDENT 5/6 GUARDRAIL]: Summarized {len(messages) - 3} "
                 "intermediate message steps to preserve token budget."
             ),
         },
     ] + last_two
 
-    after_tokens = sum(len(json.dumps(m)) for m in condensed) // 4
+    after_tokens = estimate_message_tokens(condensed)
     return condensed, before_tokens, after_tokens
+
+
+def apply_context_guardrail(
+    messages: List[Dict[str, Any]],
+    max_token_threshold: int = MAX_TOKEN_THRESHOLD,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Loop-transition entrypoint for Student 6. Returns pruned messages plus a
+    small metrics dict the graph can optionally log/print.
+    """
+    pruned, before_t, after_t = prune_context_window(messages, max_token_threshold)
+    return pruned, {
+        "tokens_before": before_t,
+        "tokens_after": after_t,
+        "pruned": before_t > after_t,
+        "threshold": max_token_threshold,
+    }

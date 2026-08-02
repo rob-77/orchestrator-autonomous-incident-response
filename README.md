@@ -138,8 +138,8 @@ python student_5_privacy_and_tokens/test_failure.py
 | **Silent Hallucinations** | Student 2 | $100\%$ `KeyError` crashes | $0\%$ crashes ($100\%$ recovery) | **$100\%$ Automatic Recovery** |
 | **Rogue Tool Execution** | Student 3 | $1$ Rogue execution fired | $0$ Rogue actions fired | **$100\%$ Security Intercept** |
 | **Cascade Failure** | Student 4 | 9/9 invalid states reached downstream (3 crashes, 6 silent corruptions) | 0/9 reached downstream; 9 safe mock rollbacks | **100% Invalid-State Isolation** |
-| **Data Privacy Leak** | Student 5 | $4$ Secrets leaked to telemetry | $0$ Secrets leaked | **Zero PII Exposure** |
-| **Context Token Bloat** | Student 5 | $1,073$ Tokens ($6.5\text{s}$ latency) | $239$ Tokens ($1.2\text{s}$ latency) | **$-77.7\%$ Token Spend** |
+| **Data Privacy Leak** | Student 5 | 4 secrets leaked to telemetry | 0 secrets leaked | **−100% PII exposure** |
+| **Context Token Bloat** | Student 5 | 1,073 tokens/turn (~6.44 s latency) | 240 tokens/turn (~1.44 s latency) | **−77.6% tokens/turn** |
 
 ---
 
@@ -191,5 +191,6 @@ python student_5_privacy_and_tokens/test_failure.py
   └── [student_5_privacy_and_tokens]/ # Combined Sections 5 & 6
         ├── snippet.py               # Privacy scrubber & token context manager view
         ├── test_failure.py          # Reproduction script: Secret leak & token explosion test
-        └── README.md                # Quantitative metrics & video script
+        ├── metrics.md               # Before/after quantitative baselines (4→0 secrets, 1073→240 tokens)
+        └── README.md                # Failure overview, guardrails, and how to run tests
 ```
