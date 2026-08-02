@@ -24,9 +24,71 @@ Each student must record a 2-minute clean screen capture following this structur
 - **1:15 - 2:00**: Execute with `enable_guardrail=True`. Show the programmatic guardrail trapping the exception, isolating state, and outputting clean metrics.
 
 ### 2. Team 5-Minute Technical Video Demo Guide
-- **0:00 - 1:00**: **Domain & Architecture Overview** — Introduce the Autonomous Incident Response topology, `contract.py` schema freeze, and Coordinator dynamic routing graph.
-- **1:00 - 3:30**: **Live End-to-End System Walkthrough** — Run `python main_system.py`. Show the graph dynamically routing an alert through triage, schema validation, safe patch execution, state invariant checking, privacy telemetry scrubbing, and token pruning.
-- **3:30 - 5:00**: **Failure Mode & Guardrail Suite Demonstration** — Quickly highlight test executions across all 5 student folders (`student_1_loop`, `student_2_silent`, `student_3_rogue`, `student_4_cascade`, `student_5_privacy_and_tokens`), pointing out quantitative metric improvements.
+**Preferred recording command** (use case + architecture first, then all three demo segments, with ENTER pauses for narration):
+
+```bash
+python main_system.py --video-all --step
+```
+
+**Voiceover:** follow [`DEMO_SCRIPT_5MIN.md`](DEMO_SCRIPT_5MIN.md) — timed lines mapped to each ENTER prompt, covering all 6 guardrails.
+
+| Time | On screen / command | What to say |
+|---|---|---|
+| **0:00 - 1:00** | Use-case + architecture banner (printed automatically) | Domain stakes, Coordinator + 4 workers, frozen `contract.py`, code-based guardrails |
+| **1:00 - 2:00** | Segment 1/3 — happy path | Clean Monitor → Diagnose → Patch → Validate → Report flow |
+| **2:00 - 3:30** | Segment 2/3 — combined pressure | Schema retry, rogue tool block, privacy scrub, token prune |
+| **3:30 - 4:30** | Segment 3/3 — recovery loop | Cascade rollback loops, then `round_number >= 5` cutover to Reporter |
+| **4:30 - 5:00** | Metrics snapshot footer | Cite before/after numbers from the metrics table below |
+
+Without `--step`, `--video-all` finishes too fast to narrate live — use `--step` (or `--delay 8`) for recording.
+
+---
+
+## 🚀 Quickstart & How to Run
+
+### Prerequisites
+- Python 3.10+ installed
+- Dependencies: `pip install langgraph langchain-core pydantic langsmith`
+
+### Main orchestrator run modes (`main_system.py`)
+
+| Command | Purpose | When to use |
+|---|---|---|
+| `python main_system.py --video-all --step` | **Team 5-minute demo** — use case + architecture, then success → pressure → recovery-loop, pause on ENTER | Live screen recording / voiceover |
+| `python main_system.py --video-all --delay 8` | Same three segments, auto-pause 8s between punchlines/segments | Hands-free recording |
+| `python main_system.py --video-all` | Same three segments, condensed output, no pauses | Quick smoke check (not for live narration) |
+| `python main_system.py` | Single **success** scenario, verbose node-by-node routing | Local debugging of the happy path |
+| `python main_system.py --scenario pressure --video --architecture` | One condensed scenario with banner | Practice a single video segment |
+| `python main_system.py --scenario recovery-loop --step` | Verbose live steps with ENTER pauses | Show dynamic conditional routing in detail |
+| `python main_system.py --suite` | Verbose grading suite (loop, schema, rogue, cascade, tokens) | Evidence / grading — too long for the team video |
+| `python main_system.py --architecture --scenario success` | Print use-case + architecture, then one scenario | Architecture walkthrough without full video pack |
+
+**Useful flags (combinable):**
+- `--step` — pause after each verbose node (or each video punchline / segment) until you press ENTER
+- `--delay SEC` — auto-pause instead of ENTER
+- `--video` / `--fast` — condensed punchline output for a single `--scenario`
+- `--architecture` — print use-case + architecture banner (always on for `--video-all`)
+- `--scenario {success,pressure,recovery-loop,cascade,rogue,schema,loop,tokens,default}`
+
+### Individual student failure / guardrail tests
+Each student directory contains an isolated `snippet.py` and a deterministic `test_failure.py` script demonstrating the failure mode (guardrail disabled) vs. guardrail protection (guardrail enabled):
+
+```bash
+# Student 1: Infinite Graph Loops
+python student_1_loop/test_failure.py
+
+# Student 2: Silent Hallucinations & Schema Failures
+python student_2_silent/test_failure.py
+
+# Student 3: Rogue Tool Execution
+python student_3_rogue/test_failure.py
+
+# Student 4: Downstream Cascade Failures
+python student_4_cascade/test_failure.py
+
+# Student 5: Telemetry Privacy Leaks & Context Token Explosion
+python student_5_privacy_and_tokens/test_failure.py
+```
 
 ---
 
@@ -93,40 +155,6 @@ Data state passing between all nodes is strictly governed by immutable Pydantic 
 All actions interacting with external infrastructure are strictly mocked across the entire codebase.
 - **Safety Policy**: Zero real execution of destructive commands (`rm -rf`, live DB drops, or unauthorized shell calls).
 - **Implementation**: Mock functions output safe logs (e.g. `[CRITICAL UNGUARDRAILED SIMULATION]: PROD INFRASTRUCTURE DELETION TARGETED -> MOCK DANGEROUS ACTION FIRED!`).
-
----
-
-## 🚀 Quickstart & Setup Guide
-
-### 1. Prerequisites
-- Python 3.10+ installed
-- Dependencies: `pip install langgraph langchain-core pydantic langsmith`
-
-### 2. Run the Main Integrated System
-Execute the full multi-agent orchestrator graph end-to-end:
-```bash
-python main_system.py
-```
-
-### 3. Run Individual Student Failure Mode & Guardrail Tests
-Each student directory contains an isolated `snippet.py` and a deterministic `test_failure.py` script demonstrating the failure mode (guardrail disabled) vs. guardrail protection (guardrail enabled):
-
-```bash
-# Student 1: Infinite Graph Loops
-python student_1_loop/test_failure.py
-
-# Student 2: Silent Hallucinations & Schema Failures
-python student_2_silent/test_failure.py
-
-# Student 3: Rogue Tool Execution
-python student_3_rogue/test_failure.py
-
-# Student 4: Downstream Cascade Failures
-python student_4_cascade/test_failure.py
-
-# Student 5: Telemetry Privacy Leaks & Context Token Explosion
-python student_5_privacy_and_tokens/test_failure.py
-```
 
 ---
 

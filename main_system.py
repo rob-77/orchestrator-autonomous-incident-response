@@ -806,18 +806,33 @@ def _print_architecture_banner() -> None:
     print(
         """
 ========================================================================
-AUTONOMOUS INCIDENT RESPONSE — LangGraph Orchestrator
+USE CASE — Autonomous Incident Response
 ========================================================================
-  Coordinator
-    → Analyzer
-    → Actor
-    → Validator
-    → Reporter
+  High-stakes domain: enterprise server outages where non-deterministic
+  AI actions have real consequences (unsafe patches, secret leaks, loops).
 
-  Global layers: Privacy Redaction | Context Management
+  Pipeline skin: Monitor → Diagnose → Patch → Validate → Report
+  Chassis:       1 Coordinator + 4 Workers + 2 global guardrail layers
 
-  Frozen shared contract: contract.py (AgentState)
-  Dynamic conditional routing on live state
+  Incoming alerts are unstructured (logs, tokens, DB URLs, PII). The
+  orchestrator must structure them, execute only approved remediation
+  tools (SAFE MOCK), validate invariants, scrub telemetry, and prune
+  context — without deadlocking or burning unbounded API tokens.
+========================================================================
+ARCHITECTURE — Dynamic Coordinator + Worker Graph
+========================================================================
+  Coordinator  (Student 1 — loop limit: round_number >= 5)
+    → Analyzer (Student 2 — schema / silent-hallucination retry)
+    → Actor    (Student 3 — tool permission whitelist middleware)
+    → Validator(Student 4 — cascade invariant check + mock rollback)
+    → Reporter (final partial/full incident report)
+
+  Global layers (Student 5):
+    • Privacy redaction before telemetry export
+    • Context / token pruning at loop transitions
+
+  Frozen shared contract: contract.py (AgentState + payloads)
+  Dynamic conditional routing on live state flags
   All infrastructure actions: SAFE MOCK only
   Guardrails: enforced in code (not prompts)
 ========================================================================
@@ -1113,10 +1128,12 @@ def run_demo(
             f"(trigger={MAX_TOKEN_THRESHOLD}, target<={POST_PRUNE_TARGET})"
         )
 
-    if pace == "step":
-        input("\n>>> Press ENTER to start the graph... ")
-    elif pace == "delay":
-        _pace(pace, delay_sec)
+    # --video-all already pauses between segments; skip the extra "start graph" prompt.
+    if not video:
+        if pace == "step":
+            input("\n>>> Press ENTER to start the graph... ")
+        elif pace == "delay":
+            _pace(pace, delay_sec)
 
     if not video:
         print("\n--- LIVE GRAPH EXECUTION ---")
@@ -1148,14 +1165,18 @@ def run_demo(
 
             if video:
                 # Only announce high-signal moments live; full story at end.
+                announced = False
                 if node_name == "analyzer" and update.get("error_log"):
                     print("[GUARDRAIL 2] Schema validation failed → retry")
+                    announced = True
                 elif node_name == "analyzer" and notes.get("schema_recovered") and prior.get("error_log"):
                     print("[GUARDRAIL 2] One retry succeeded")
+                    announced = True
                 elif node_name == "actor":
                     tools = update.get("executed_tools") or []
                     if tools and tools[-1].get("status") == "BLOCKED_BY_GUARDRAIL":
                         print(f"[GUARDRAIL 3] Tool '{tools[-1].get('tool')}' blocked")
+                        announced = True
                 if (
                     node_name == "coordinator"
                     and _LAST_CONTEXT_METRICS.get("pruned")
@@ -1165,17 +1186,23 @@ def run_demo(
                     b, a = notes["context"]
                     print(f"[GUARDRAIL 6] Context pruned: {b} → {a} tokens")
                     notes["context_printed"] = True
+                    announced = True
                 if (
                     node_name == "coordinator"
                     and final_output.get("system_status") == "TIMEOUT_SAFEGUARD"
                 ):
                     print("[GUARDRAIL 1] round_number >= 5 → TIMEOUT_SAFEGUARD")
+                    announced = True
                 elif node_name == "validator" and (update.get("validation_result") or {}).get(
                     "invariant_errors"
                 ):
                     if notes.get("cascade_rejects", 0) == 1:
                         print("[GUARDRAIL 4] Validator REJECTED → mock rollback → Coordinator")
+                        announced = True
                     # later rounds stay silent (condensed)
+                # Narration pacing: pause on punchlines only (not every silent loop turn).
+                if announced:
+                    _pace(pace, delay_sec)
             else:
                 _print_live_step(step, node_name, update, prior, final_output, sample_input)
                 _pace(pace, delay_sec)
@@ -1216,15 +1243,31 @@ def run_demo(
     return final_output
 
 
-def run_video_demo() -> None:
-    """Three short scenarios for the 5-minute team recording."""
+def run_video_demo(pace: str = "off", delay_sec: float = 4.0) -> None:
+    """Three short scenarios for the 5-minute team recording.
+
+    Always opens with use case + architecture. Pass pace='step' (or 'delay')
+    so narrators can pause between nodes / segments during a live recording.
+    """
     _print_architecture_banner()
+    if pace == "step":
+        input("\n>>> Press ENTER to start VIDEO SEGMENT 1/3 (happy path)... ")
+    elif pace == "delay":
+        _pace(pace, delay_sec)
+
     print("\n>>> VIDEO SEGMENT 1/3 — Happy path (success)\n")
     run_demo(
         SCENARIOS["success"],
         video=True,
         label="success",
+        pace=pace,
+        delay_sec=delay_sec,
     )
+    if pace == "step":
+        input("\n>>> Press ENTER to start VIDEO SEGMENT 2/3 (combined pressure)... ")
+    elif pace == "delay":
+        _pace(pace, delay_sec)
+
     print("\n>>> VIDEO SEGMENT 2/3 — Combined pressure (schema+rogue+privacy+context)\n")
     pressure = SCENARIOS["pressure"]
     run_demo(
@@ -1232,12 +1275,21 @@ def run_video_demo() -> None:
         video=True,
         label="pressure",
         initial_messages=_bloated_messages(pressure),
+        pace=pace,
+        delay_sec=delay_sec,
     )
+    if pace == "step":
+        input("\n>>> Press ENTER to start VIDEO SEGMENT 3/3 (recovery loop)... ")
+    elif pace == "delay":
+        _pace(pace, delay_sec)
+
     print("\n>>> VIDEO SEGMENT 3/3 — Recovery loop (cascade + loop limit)\n")
     run_demo(
         SCENARIOS["recovery-loop"],
         video=True,
         label="recovery-loop",
+        pace=pace,
+        delay_sec=delay_sec,
     )
     print(
         """
@@ -1284,8 +1336,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Autonomous Incident Response orchestrator demo"
     )
-    parser.add_argument("--step", action="store_true", help="Verbose pause-after-each-node")
-    parser.add_argument("--delay", type=float, default=0.0, metavar="SEC")
+    parser.add_argument(
+        "--step",
+        action="store_true",
+        help="Pause after each node (and between --video-all segments); press ENTER to continue",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        metavar="SEC",
+        help="Auto-pause SEC seconds after each node / video segment (alternative to --step)",
+    )
     parser.add_argument(
         "--scenario",
         choices=[
@@ -1300,18 +1362,21 @@ if __name__ == "__main__":
             "tokens",
         ],
         default="success",
-        help="Scenario to run",
+        help="Scenario to run (ignored when --video-all or --suite is set)",
     )
     parser.add_argument(
         "--video",
         "--fast",
         action="store_true",
-        help="Condensed output for the 5-minute team recording",
+        help="Condensed punchline output for a single scenario (team-video style)",
     )
     parser.add_argument(
         "--video-all",
         action="store_true",
-        help="Run success → pressure → recovery-loop in condensed video mode",
+        help=(
+            "5-minute team demo: use case + architecture, then "
+            "success → pressure → recovery-loop. Combine with --step or --delay to narrate live"
+        ),
     )
     parser.add_argument(
         "--suite",
@@ -1321,7 +1386,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--architecture",
         action="store_true",
-        help="Print architecture banner before the run",
+        help="Print use-case + architecture banner before a single-scenario run (--video-all always prints it)",
     )
     args = parser.parse_args()
 
@@ -1333,7 +1398,7 @@ if __name__ == "__main__":
         pace = "off"
 
     if args.video_all:
-        run_video_demo()
+        run_video_demo(pace=pace, delay_sec=args.delay or 4.0)
     elif args.suite:
         run_guardrail_suite(pace=pace, delay_sec=args.delay or 4.0)
     else:
@@ -1351,5 +1416,5 @@ if __name__ == "__main__":
             initial_messages=msgs,
             label=scenario,
             video=args.video,
-            show_architecture=args.architecture,
+            show_architecture=args.architecture or args.video,
         )
