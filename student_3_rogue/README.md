@@ -57,7 +57,7 @@ METRIC -> Rogue tool executions: 3 -> 0
 
 ## Individual Demonstration Video
 
-**Combined Individual Failure Mode and Guardrail Demonstrations**
+**Multi-Agent Failure Modes & Guardrails**
 
 **Student:** Francisco Reyes  
 **Demonstration:** Rogue Tool Execution Guardrail
