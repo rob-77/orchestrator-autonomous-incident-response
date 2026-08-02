@@ -30,8 +30,6 @@ Each student must record a 2-minute clean screen capture following this structur
 python main_system.py --video-all --step
 ```
 
-**Voiceover:** follow [`DEMO_SCRIPT_5MIN.md`](DEMO_SCRIPT_5MIN.md) — timed lines mapped to each ENTER prompt, covering all 6 guardrails.
-
 | Time | On screen / command | What to say |
 |---|---|---|
 | **0:00 - 1:00** | Use-case + architecture banner (printed automatically) | Domain stakes, Coordinator + 4 workers, frozen `contract.py`, code-based guardrails |
